@@ -1,0 +1,6 @@
+__pycache__/
+.venv/
+*.py[cod]
+sportpredict.db
+.streamlit/secrets.toml
+.DS_Store
