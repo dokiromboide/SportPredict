@@ -1,58 +1,22 @@
 from __future__ import annotations
-import io, sqlite3
+import sqlite3
 from pathlib import Path
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-from sklearn.compose import ColumnTransformer
-from sklearn.impute import SimpleImputer
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, log_loss
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sportpredict.model import load_csv, train as train_model, forecast, LABELS
+from sportpredict.service import Service
 
-ROOT=Path(__file__).parent
-DB_PATH=ROOT/'sportpredict.db'
-REQUIRED={'Date','HomeTeam','AwayTeam','FTHG','FTAG'}
-LABELS={'H':'Victoria local','D':'Empate','A':'Victoria visitante'}
+ROOT = Path(__file__).parent
+DB_PATH = ROOT / 'sportpredict.db'
 
 def db():
-    conn=sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH)
     conn.execute('CREATE TABLE IF NOT EXISTS feedback (id INTEGER PRIMARY KEY, user_name TEXT, home_team TEXT, away_team TEXT, prediction TEXT, actual TEXT, notes TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)')
     return conn
 
-def load_csv(content: bytes)->pd.DataFrame:
-    df=pd.read_csv(io.BytesIO(content),encoding_errors='replace')
-    df.columns=[str(c).strip() for c in df.columns]
-    missing=REQUIRED-set(df.columns)
-    if missing: raise ValueError('Faltan columnas obligatorias: '+', '.join(sorted(missing)))
-    df=df.copy(); df['Date']=pd.to_datetime(df.Date,dayfirst=True,errors='coerce')
-    for c in ('FTHG','FTAG'): df[c]=pd.to_numeric(df[c],errors='coerce')
-    df=df.dropna(subset=['Date','HomeTeam','AwayTeam','FTHG','FTAG'])
-    df['HomeTeam']=df.HomeTeam.astype(str).str.strip(); df['AwayTeam']=df.AwayTeam.astype(str).str.strip()
-    return df.sort_values('Date').reset_index(drop=True)
-
-def add_features(df):
-    history={}; rows=[]
-    for _,day in df.groupby('Date',sort=True):
-        pending=[]
-        for row in day.itertuples(index=False):
-            home,away=str(row.HomeTeam),str(row.AwayTeam); h=history.get(home,[])[-5:]; a=history.get(away,[])[-5:]
-            rows.append({'Date':row.Date,'HomeTeam':home,'AwayTeam':away,'home_form':sum(x[0] for x in h)/len(h) if h else 0.,'away_form':sum(x[0] for x in a)/len(a) if a else 0.,'home_goal_diff':sum(x[1] for x in h)/len(h) if h else 0.,'away_goal_diff':sum(x[1] for x in a)/len(a) if a else 0.,'target':'H' if row.FTHG>row.FTAG else ('A' if row.FTHG<row.FTAG else 'D')})
-            hp=3 if row.FTHG>row.FTAG else 1 if row.FTHG==row.FTAG else 0; ap=3 if row.FTAG>row.FTHG else 1 if row.FTHG==row.FTAG else 0
-            pending.extend([(home,(hp,row.FTHG-row.FTAG)),(away,(ap,row.FTAG-row.FTHG))])
-        for team,result in pending: history.setdefault(team,[]).append(result)
-    return pd.DataFrame(rows)
-
-@st.cache_data(show_spinner=False)
-def train(df):
-    f=add_features(df)
-    if len(f)<20 or f.target.nunique()<2: raise ValueError('Se necesitan al menos 20 partidos y dos resultados distintos.')
-    split=min(max(int(len(f)*.8),1),len(f)-1); cats=['HomeTeam','AwayTeam']; nums=['home_form','away_form','home_goal_diff','away_goal_diff']
-    prep=ColumnTransformer([('teams',OneHotEncoder(handle_unknown='ignore'),cats),('stats',Pipeline([('impute',SimpleImputer(strategy='median')),('scale',StandardScaler())]),nums)])
-    model=Pipeline([('features',prep),('classifier',LogisticRegression(max_iter=1000,class_weight='balanced'))])
-    model.fit(f.iloc[:split][cats+nums],f.target.iloc[:split]); test=f.iloc[split:]; pred=model.predict(test[cats+nums])
-    return model,f,test,pred
+train = st.cache_data(show_spinner=False)(train_model)
 
 st.set_page_config(page_title='SportPredict',page_icon='⚽',layout='wide')
 st.title('⚽ SportPredict'); st.caption('Sistema académico de análisis y predicción de resultados de La Liga')
@@ -67,8 +31,9 @@ if uploaded:
         data=load_csv(uploaded.getvalue()); st.success(f'Se cargaron {len(data):,} partidos válidos desde {data.Date.min():%d/%m/%Y}.')
     except Exception as e: st.error(str(e)); st.stop()
 else:
-    data=sample.copy(); data['Date']=pd.to_datetime(data.Date,dayfirst=True)
-    st.warning('Vista de demostración: equipos y resultados ficticios. Importa un CSV histórico para entrenar y analizar datos reales.')
+    service=Service()
+    data=service.frame.drop(columns=['id'])
+    st.caption(f'Datos compartidos con la aplicación web: {service.source}.')
 page=st.sidebar.radio('Navegación',['Resumen','Partidos','Modelo','Predicción','Retroalimentación','Acerca de'])
 if page=='Resumen':
     st.subheader('Resumen de la competición'); c1,c2,c3=st.columns(3)
@@ -84,8 +49,8 @@ elif page=='Partidos':
     st.dataframe(out.sort_values('Date',ascending=False),use_container_width=True,hide_index=True)
     st.download_button('Exportar resultados filtrados',out.to_csv(index=False).encode('utf-8'),'partidos_sportpredict.csv','text/csv')
 elif page=='Modelo':
-    st.subheader('Entrenamiento y evaluación temporal'); st.write('Forma de los cinco partidos anteriores, diferencia de goles y equipos. El 20 % cronológicamente más reciente se reserva para prueba.')
-    if len(data)<20 or data.HomeTeam.str.startswith('Demo ').all(): st.warning('Carga al menos 20 partidos reales para ver métricas representativas.')
+    st.subheader('Entrenamiento y evaluación temporal'); st.write('Forma de los cinco partidos anteriores, diferencia de goles y equipos. El tramo más reciente (20 % de las fechas) se reserva para prueba.')
+    if len(data)<30 or data.HomeTeam.str.startswith('Demo ').all(): st.warning('Carga al menos 30 partidos reales para ver métricas representativas.')
     else:
         try:
             model,feat,test,pred=train(data); acc=accuracy_score(test.target,pred); c1,c2,c3=st.columns(3)
@@ -97,17 +62,12 @@ elif page=='Modelo':
         except Exception as e: st.error(f'No fue posible entrenar el modelo: {e}')
 elif page=='Predicción':
     st.subheader('Estimación para un partido')
-    if data.HomeTeam.str.startswith('Demo ').all() or len(data)<20: st.warning('Importa al menos 20 partidos históricos reales antes de generar predicciones.')
+    if data.HomeTeam.str.startswith('Demo ').all() or len(data)<30: st.warning('Importa al menos 30 partidos históricos reales antes de generar predicciones.')
     else:
-        model,feat,_,_=train(data); teams=sorted(set(data.HomeTeam)|set(data.AwayTeam)); col1,col2=st.columns(2)
-        home=col1.selectbox('Equipo local',teams); away=col2.selectbox('Equipo visitante',[t for t in teams if t!=home]); last=feat.iloc[-1]
-        home_rows=feat[(feat.HomeTeam==home)|(feat.AwayTeam==home)].iloc[-1]
-        away_rows=feat[(feat.HomeTeam==away)|(feat.AwayTeam==away)].iloc[-1]
-        hf,hgd=(home_rows.home_form,home_rows.home_goal_diff) if home_rows.HomeTeam==home else (home_rows.away_form,home_rows.away_goal_diff)
-        af,agd=(away_rows.home_form,away_rows.home_goal_diff) if away_rows.HomeTeam==away else (away_rows.away_form,away_rows.away_goal_diff)
-        row=pd.DataFrame([{'HomeTeam':home,'AwayTeam':away,'home_form':hf,'away_form':af,'home_goal_diff':hgd,'away_goal_diff':agd}])
+        teams=sorted(set(data.HomeTeam)|set(data.AwayTeam)); col1,col2=st.columns(2)
+        home=col1.selectbox('Equipo local',teams); away=col2.selectbox('Equipo visitante',[t for t in teams if t!=home])
         if st.button('Calcular probabilidades',type='primary'):
-            ps=model.predict_proba(row)[0]; values={LABELS[c]:float(p) for c,p in zip(model.classes_,ps)}
+            probabilities=forecast(data,home,away); values={LABELS[c]:p for c,p in probabilities.items()}
             st.plotly_chart(px.bar(x=list(values.values()),y=list(values.keys()),orientation='h',range_x=[0,1],labels={'x':'Probabilidad','y':'Resultado'},title=f'{home} vs {away}'),use_container_width=True)
             st.caption('Estimación estadística basada en el historial cargado; no incluye lesiones, alineaciones ni contexto actual.')
 elif page=='Retroalimentación':

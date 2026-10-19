@@ -1,17 +1,54 @@
 # Guía de usuario
 
-1. Instala Python 3.10+ y ejecuta los comandos de instalación del README.
-2. Inicia `streamlit run app.py` y abre la dirección local que muestra la terminal.
-3. Descarga un CSV de La Liga de Football-Data.co.uk y cárgalo con el control de la barra lateral. La plantilla incluida permite comprobar el formato, pero sus datos son ficticios.
-4. Usa **Resumen** para revisar indicadores y **Partidos** para filtrar y exportar resultados.
-5. Usa **Modelo** después de cargar al menos 20 partidos para evaluar el modelo con la parte más reciente del historial.
-6. Usa **Predicción** para estimar un cruce de equipos incluidos en el CSV.
-7. Usa **Retroalimentación** para documentar la comparación con resultados reales. La información se guarda en la máquina donde corre la aplicación.
+## Abrir
 
-## Formato de archivo
+Instala las dependencias del README y ejecuta **python server.py** o haz doble clic
+en **iniciar.bat**. Abre http://127.0.0.1:8000.
 
-Columnas obligatorias: `Date`, `HomeTeam`, `AwayTeam`, `FTHG`, `FTAG`. El parser admite fechas comunes día/mes/año. Ejemplo: `31/08/2024, Barcelona, Real Valladolid, 7, 0`.
+## Navegación
+
+En computador hay barra lateral; en celular, barra inferior. El icono de gráfico
+del panel abre Estadísticas. El panel muestra un encuentro histórico, probabilidades,
+forma reciente y promedios. La fecha de corte indica hasta cuándo se entrenó.
+
+## Analizar
+
+En **Partidos**, usa la búsqueda superior o la lupa del celular, filtra por equipo
+y cambia de página. **Analizar** abre una recreación calculada solo con partidos
+previos. Las primeras jornadas pueden no tener historial suficiente; se explica
+el motivo y puedes seleccionar otro encuentro.
+
+En **Predicciones**, elige dos equipos distintos y pulsa **Calcular probabilidades**.
+Esto simula un cruce con todo el historial cargado.
+
+En **Partidos → Programados por ti**, agrega fecha, hora y equipos. No se sincroniza
+con un calendario oficial. Puedes guardar la predicción y, desde la fecha del
+partido, registrar su marcador. El resultado actualiza el historial, sin modificar
+el CSV de entrenamiento.
+
+## Guardar y personalizar
+
+**Guardar análisis** conserva el cálculo en SQLite. Repetir el mismo partido o
+cruce con la misma versión de datos no crea duplicados.
+
+**Mi historial** filtra por disponibilidad de resultado. Las coincidencias incluyen
+recreaciones históricas y no equivalen a éxito en pronósticos en vivo.
+
+En **Perfil**, cambia nombre, rol y favorito. Es un perfil local sin registro ni
+pagos; se conserva al reiniciar.
+
+## Importar
+
+Descarga los datos actuales si deseas conservar una copia. Selecciona un CSV y
+pulsa **Importar y entrenar**. Debe tener Date, HomeTeam, AwayTeam, FTHG y FTAG.
+HC/AC son córners; HY/AY son amarillas. Máximo 5 MB.
+
+Una importación válida reemplaza el conjunto activo y conserva el historial.
+Si el archivo no sirve para entrenar, se explica el problema y se mantiene el
+dataset anterior.
 
 ## Interpretación
 
-La salida son probabilidades del modelo, no certezas. La exactitud depende del periodo, calidad, cantidad y composición de los datos. No interpretes una meta del 80 % como promesa de rendimiento.
+Las probabilidades son estimaciones. Córners y tarjetas son promedios recientes.
+Los datos iniciales son históricos de 2024/25; no incluyen lesiones, alineaciones
+ni información en vivo. La aplicación informa su corte de datos.

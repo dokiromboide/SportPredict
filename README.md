@@ -1,41 +1,109 @@
 # SportPredict
 
-Aplicación académica para analizar resultados de La Liga y estimar probabilidades de victoria local, empate y victoria visitante. Es un apoyo experimental: no garantiza resultados deportivos ni constituye asesoría para apuestas.
+Aplicación web para analizar La Liga con un frontend oscuro adaptable a móvil y
+escritorio, API Python, modelos scikit-learn y persistencia SQLite.
 
-## Iniciar en Windows
+## Iniciar
 
-Requiere Python 3.10 o superior.
+Requiere Python 3.11 o superior. Desde la carpeta del repositorio:
 
-```powershell
-cd SportPredict
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-streamlit run app.py
-```
+    python -m pip install -r requirements.txt
+    python server.py
 
-Streamlit abrirá el panel en el navegador. La aplicación inicia con un conjunto ficticio de demostración, identificado como tal. Para usar resultados reales, descarga un CSV de España desde [Football-Data.co.uk](https://football-data.co.uk/spainm.php) y cárgalo desde la barra lateral.
+Abre **http://127.0.0.1:8000**. En Windows también puedes ejecutar **iniciar.bat**.
+Incluye los **380 partidos reales de La Liga 2024/25** y funciona sin subir un
+archivo ni configurar claves API. Los escudos están guardados localmente.
+Las fuentes de Google son opcionales; sin conexión se usa la fuente del sistema.
 
-## Datos admitidos
+Para instalar en un entorno virtual:
 
-El CSV debe incluir `Date`, `HomeTeam`, `AwayTeam`, `FTHG` y `FTAG`. El sistema limpia fechas y marcadores inválidos y ordena partidos cronológicamente. Las columnas adicionales se conservan para exploración, pero el modelo actual no las usa.
+    python -m venv .venv
+    .\.venv\Scripts\Activate.ps1
+    python -m pip install -r requirements.txt
+    python server.py
 
-El modelo de regresión logística usa la forma y la diferencia de goles promedio de los cinco partidos anteriores de cada equipo y los nombres de los equipos. La evaluación deja el 20 % cronológicamente más reciente como prueba. Requiere al menos 20 partidos. La cifra objetivo de 80 % que aparece en el acta no se presenta como alcanzada salvo que las métricas reales la respalden.
+## Funciones
 
-La página Retroalimentación guarda entradas localmente en `sportpredict.db` (SQLite). Los registros no se incorporan automáticamente al entrenamiento.
+- **Panel principal:** probabilidades calculadas, promedio reciente de córners y
+  tarjetas, forma y evolución de goles.
+- **Partidos:** búsqueda, filtro por equipo, paginación y análisis histórico.
+  Agrega encuentros propios y registra sus resultados manuales.
+- **Predicciones:** simula cruces de los equipos del dataset.
+- **Estadísticas:** exactitud, referencia simple, log loss, matriz de confusión y
+  tabla estadística de equipos.
+- **Historial:** guarda análisis sin duplicados, consulta coincidencias con
+  resultados históricos o manuales y elimina análisis.
+- **Perfil:** edita nombre, rol y favorito; importa o descarga CSV.
 
-## Módulos
+El perfil, dataset activo, encuentros programados y predicciones se guardan en
+**sportpredict.db**, que no se publica en Git. Es una aplicación local de un solo
+perfil. El servidor escucha en 127.0.0.1 y no incluye autenticación pública.
 
-- **Resumen:** distribución de resultados, volumen mensual y marcadores recientes.
-- **Partidos:** filtro por equipo y exportación CSV.
-- **Modelo:** exactitud temporal, log loss, matriz de confusión y reporte por clase.
-- **Predicción:** probabilidades para dos equipos seleccionados.
-- **Retroalimentación:** registro de evaluaciones de usuarios en SQLite.
+## Modelo y datos
 
-## Fuente y limitaciones
+La lógica del proyecto original se extrajo a **sportpredict/model.py**, compartida
+por la web y Streamlit. El frontend llama a la API; Python calcula las
+probabilidades y SQLite guarda los formularios.
 
-Football-Data.co.uk ofrece archivos CSV de resultados históricos y estadísticas de fútbol; revisa su página y condiciones actuales, cita la fuente en los entregables y verifica la calidad del archivo antes de analizarlo. Un conjunto de una sola temporada ofrece una muestra pequeña para generalizar. La predicción usa solo resultados pasados disponibles y no contempla lesiones, alineaciones ni cambios recientes de plantilla.
+La regresión logística usa equipos y forma/diferencia de goles de sus cinco
+partidos anteriores. Los resultados de una fecha se incorporan solo después de
+generar todas las variables de esa fecha.
+
+- **Recreación histórica:** entrena exclusivamente con partidos anteriores a la
+  fecha del encuentro. Su resultado real se usa después para comparación.
+- **Simulación:** utiliza todo el historial completado disponible.
+- **Evaluación:** separa el último 20 % de fechas completas, sin dividir una fecha
+  entre entrenamiento y prueba. La forma de un partido de prueba puede usar
+  resultados anteriores del periodo de prueba; el modelo no se reajusta con ellos.
+- **Córners y tarjetas:** promedio combinado de los últimos diez encuentros de
+  cada equipo. No son modelos adicionales.
+
+Validación inicial: **51,1 % de exactitud**, **43,3 %** de referencia simple,
+**290 partidos de entrenamiento**, **90 de prueba**, log loss **1,002**.
+Las cifras se recalculan al cambiar los datos. El 80 % del acta es una meta, no un
+rendimiento demostrado. Los partidos programados los añade el usuario; no hay
+un calendario oficial ni resultados en vivo.
+
+Fuente y licencia del dataset y procedencia de los escudos:
+[data/README.md](data/README.md).
+
+## CSV
+
+Desde **Perfil → Importar y entrenar**. Columnas obligatorias:
+
+    Date,HomeTeam,AwayTeam,FTHG,FTAG
+
+Opcionales: HC, AC, HY, AY, HS, AS, HST, AST. Fechas ISO o día/mes/año.
+Máximo 5 MB. Se descartan filas inválidas, marcadores no enteros o negativos,
+autopartidos y duplicados. Mínimo 30 partidos, cinco fechas y las tres clases de
+resultado en el tramo de entrenamiento. Una importación inválida conserva el
+dataset anterior; una válida reemplaza los datos y mantiene el historial guardado.
+
+## Streamlit
+
+La interfaz anterior usa el mismo módulo de modelos y dataset persistido:
+
+    python -m streamlit run app.py
+
+## Comprobaciones
+
+    python -m unittest discover -s tests -v
+    node --check frontend/app.js
+
+Node solo se necesita para esta comprobación de sintaxis. No se necesita Node,
+npm ni compilación para ejecutar la web.
 
 ## Estructura
 
-`app.py` contiene la interfaz, preparación de datos, entrenamiento y persistencia de retroalimentación. `requirements.txt` define las dependencias Python. `docs/` contiene la guía de uso y el resumen técnico.
+    frontend/                 HTML, CSS, JavaScript y escudos
+    server.py                 API ASGI y servidor de archivos
+    sportpredict/model.py     ETL, variables, entrenamiento y evaluación
+    sportpredict/service.py   Operaciones de negocio y SQLite
+    data/                     Dataset inicial y atribución
+    tests/                    Pruebas de modelos y persistencia
+    app.py                    Interfaz Streamlit compatible
+    docs/                     Manual y descripción técnica
+
+Variables opcionales: **PORT** (8000 por defecto) y **SPORTPREDICT_DB** (ruta de
+SQLite). Consulta [docs/GUIA_USUARIO.md](docs/GUIA_USUARIO.md) y
+[docs/RESUMEN_TECNICO.md](docs/RESUMEN_TECNICO.md).
